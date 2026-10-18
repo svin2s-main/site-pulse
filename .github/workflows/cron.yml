@@ -1,0 +1,47 @@
+name: Monitor checks
+
+# Calls the protected /api/cron/check endpoint on a schedule. Works on any host
+# (Vercel, Fly, a VPS, …) — GitHub only needs to reach the public URL.
+#
+# Required repository configuration (Settings → Secrets and variables → Actions):
+#   • Secret   CRON_SECRET — must equal the app's CRON_SECRET env var
+#   • Variable APP_URL     — the deployed origin, e.g. https://devpulse.example.com
+#
+# Notes:
+#   • GitHub's scheduler is best-effort and can be delayed under load; it is not
+#     a precise every-5-minutes guarantee.
+#   • Scheduled workflows are disabled after 60 days without repository activity.
+#   • A rerun is safe: the endpoint only checks monitors whose interval elapsed.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  # Lets you trigger a run manually from the Actions tab.
+  workflow_dispatch:
+
+# Never overlap two runs: a slow run must not collide with the next one.
+concurrency:
+  group: monitor-checks
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the check runner
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::error::Repository variable APP_URL is not set (e.g. https://devpulse.example.com)"
+            exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Repository secret CRON_SECRET is not set"
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/check"
