@@ -126,23 +126,22 @@ The same runner also powers the dashboard's per-monitor **"Check now"** action
 (`checkMonitorNowAction`), which passes a request-scoped client instead of the
 admin one so RLS keeps every write scoped to the signed-in user.
 
-Scheduling examples (both are included in the repo):
+Scheduling options:
 
-- **Vercel Cron** — `vercel.json` is committed with a 5-minute schedule:
+- **GitHub Actions (default, included)** — `.github/workflows/cron.yml` curls the
+  endpoint every 5 minutes and works on **any** host. Configure a `CRON_SECRET`
+  secret and an `APP_URL` repository variable (see the file header). Caveats:
+  GitHub delays runs under load, and scheduled workflows pause after 60 days
+  without repo activity.
+- **Vercel Cron (Pro+)** — **not** committed: Vercel Hobby only allows crons that
+  run **once per day** and fails the whole deployment for anything more frequent
+  (`Hobby accounts are limited to daily cron jobs`). On a Pro plan add
+  `vercel.json` yourself:
   ```json
   { "crons": [{ "path": "/api/cron/check", "schedule": "*/5 * * * *" }] }
   ```
   Vercel automatically sends `Authorization: Bearer $CRON_SECRET` **only if** an
   environment variable literally named `CRON_SECRET` exists in the project.
-  > ⚠️ **Plan limit:** sub-daily schedules (e.g. `*/5 * * * *`) require a paid
-  > plan. On **Hobby** Vercel only allows a daily schedule and will **reject the
-  > deployment** otherwise — delete `vercel.json` or switch to the schedule your
-  > plan allows before deploying there.
-- **GitHub Actions** — `.github/workflows/cron.yml` curls the endpoint every 5
-  minutes and works on **any** host. Configure a `CRON_SECRET` secret and an
-  `APP_URL` repository variable (see the file header). Caveats: GitHub delays
-  runs under load, and scheduled workflows pause after 60 days without repo
-  activity.
 - **Anything else**:
   ```bash
   curl -X GET "https://your-app.com/api/cron/check" \
@@ -256,10 +255,11 @@ lacks runtime values still compiles (failures surface at request time, not build
   is shown as **Pending** (never as a false "Operational"), and the dashboard's
   "Check now" runs one immediately. A dedicated `last_checked_at` column would be
   the precise fix but is out of scope for the specified schema.
-- **The schedule is committed but not active until you deploy:** `vercel.json`
-  and `.github/workflows/cron.yml` exist, but nothing runs them until the app is
-  live with a matching `CRON_SECRET`. Until then the statistics stay sparse and
-  are driven only by manual "Check now".
+- **The schedule is committed but not active until you deploy:** `.github/workflows/cron.yml`
+  exists, but nothing runs it until the app is live with a matching `CRON_SECRET`
+  and an `APP_URL` repository variable. Until then the statistics stay sparse and
+  are driven only by manual "Check now". (`vercel.json` is intentionally absent —
+  see the plan-limit note in section 4.)
 - **Public status pages:** implemented — see section 5. A live page discloses
   **all** of the owner's monitors (the schema has no per-monitor publish flag)
   and slugs are guessable, so publishing is a public disclosure. The page renders
