@@ -4,6 +4,7 @@ import { Suspense, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { signInAction, signUpAction } from "@/app/actions/auth";
 import { CallbackNotice } from "./callback-notice";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -83,29 +84,31 @@ export function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background px-4">
+      <ThemeToggle className="absolute right-4 top-4" />
+
       <div className="w-full max-w-sm">
         {/* Brand */}
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-3 flex size-10 items-center justify-center rounded-md bg-indigo-500">
-            <span className="text-lg font-bold text-white">D</span>
+          <div className="mb-3 flex size-10 items-center justify-center rounded-md bg-primary">
+            <span className="text-lg font-bold text-primary-foreground">D</span>
           </div>
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
             DevPulse
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-muted-foreground">
             Sign in or create an account
           </p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="flex flex-col gap-4 rounded-lg border border-zinc-800 bg-zinc-900/80 p-6 backdrop-blur-md"
+          className="flex flex-col gap-4 rounded-lg border border-border bg-card/80 p-6 backdrop-blur-md"
         >
           <div className="flex flex-col gap-1.5">
             <label
               htmlFor="email"
-              className="text-xs font-medium text-zinc-300"
+              className="text-xs font-medium text-foreground/80"
             >
               Email
             </label>
@@ -123,7 +126,7 @@ export function LoginForm() {
           <div className="flex flex-col gap-1.5">
             <label
               htmlFor="password"
-              className="text-xs font-medium text-zinc-300"
+              className="text-xs font-medium text-foreground/80"
             >
               Password
             </label>
@@ -140,12 +143,12 @@ export function LoginForm() {
           </div>
 
           {error && (
-            <p role="alert" className="text-xs font-medium text-rose-500">
+            <p role="alert" className="text-xs font-medium text-danger">
               {error}
             </p>
           )}
           {info && (
-            <p role="status" className="text-xs font-medium text-emerald-400">
+            <p role="status" className="text-xs font-medium text-success">
               {info}
             </p>
           )}
@@ -180,7 +183,7 @@ export function LoginForm() {
           </div>
         </form>
 
-        <p className="mt-4 text-center text-xs text-zinc-600">
+        <p className="mt-4 text-center text-xs text-muted-foreground/80">
           New here? Use Sign Up to create an account.
         </p>
       </div>

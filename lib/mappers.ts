@@ -50,10 +50,11 @@ function toCheckLog(log: CheckLogSummary): CheckLog {
   };
 }
 
-const MAX_HEARTBEATS = 48;
+const MAX_HEARTBEATS = 30;
 
 /**
- * Up to 48 heartbeat bars (newest first) built from the real check logs.
+ * Up to 30 heartbeat bars (newest first) built from the real check logs —
+ * enough to read the recent trend without wrapping on a phone.
  * Missing bars simply don't render — no padding with invented values.
  */
 function toHeartbeats(logs: CheckLogSummary[]): HeartbeatPoint[] {

@@ -19,33 +19,33 @@ const OVERALL_CONFIG: Record<
 > = {
   empty: {
     label: "No services yet",
-    className: "border-zinc-800 bg-zinc-900 text-zinc-400",
-    dotClass: "bg-zinc-500",
+    className: "border-border bg-card text-muted-foreground",
+    dotClass: "bg-muted-foreground",
   },
   paused: {
     label: "All monitors paused",
-    className: "border-zinc-800 bg-zinc-900 text-zinc-400",
-    dotClass: "bg-zinc-500",
+    className: "border-border bg-card text-muted-foreground",
+    dotClass: "bg-muted-foreground",
   },
   pending: {
     label: "Awaiting first check",
-    className: "border-sky-500/20 bg-sky-500/10 text-sky-400",
-    dotClass: "bg-sky-400",
+    className: "border-info/20 bg-info/10 text-info",
+    dotClass: "bg-info",
   },
   healthy: {
     label: "All Systems Operational",
-    className: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-    dotClass: "bg-emerald-400",
+    className: "border-success/20 bg-success/10 text-success",
+    dotClass: "bg-success",
   },
   degraded: {
     label: "Degraded Performance",
-    className: "border-amber-500/20 bg-amber-500/10 text-amber-400",
-    dotClass: "bg-amber-400",
+    className: "border-warning/20 bg-warning/10 text-warning",
+    dotClass: "bg-warning",
   },
   down: {
     label: "Service Disruption",
-    className: "border-rose-500/20 bg-rose-500/10 text-rose-500",
-    dotClass: "bg-rose-500",
+    className: "border-danger/20 bg-danger/10 text-danger",
+    dotClass: "bg-danger",
   },
 };
 
@@ -59,16 +59,19 @@ export function PublicStatusPage({ page }: PublicStatusPageProps) {
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-12 sm:py-16">
       <div className="flex items-center gap-2">
-        <div className="flex size-7 items-center justify-center rounded-md bg-indigo-500">
-          <Activity className="size-4 text-white" aria-hidden="true" />
+        <div className="flex size-7 items-center justify-center rounded-md bg-primary">
+          <Activity
+            className="size-4 text-primary-foreground"
+            aria-hidden="true"
+          />
         </div>
-        <span className="text-sm font-semibold tracking-tight text-zinc-100">
+        <span className="text-sm font-semibold tracking-tight text-foreground">
           DevPulse
         </span>
       </div>
 
       <header className="mt-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {page.title}
         </h1>
         <div
@@ -88,16 +91,16 @@ export function PublicStatusPage({ page }: PublicStatusPageProps) {
 
       <section
         aria-label="Monitored services"
-        className="mt-8 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/80"
+        className="mt-8 overflow-hidden rounded-lg border border-border bg-card/80"
       >
         <h2 className="sr-only">Monitored services</h2>
 
         {page.monitors.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-zinc-500">
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
             No services are being monitored yet.
           </p>
         ) : (
-          <ul className="divide-y divide-zinc-800">
+          <ul className="divide-y divide-border">
             {page.monitors.map((monitor) => {
               const config = STATUS_CONFIG[monitor.status];
 
@@ -107,11 +110,11 @@ export function PublicStatusPage({ page }: PublicStatusPageProps) {
                   className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3"
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-sm font-medium text-zinc-100">
+                    <span className="truncate text-sm font-medium text-foreground">
                       {monitor.name}
                     </span>
                     {monitor.paused && (
-                      <span className="rounded-full border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+                      <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                         Paused
                       </span>
                     )}
@@ -119,7 +122,7 @@ export function PublicStatusPage({ page }: PublicStatusPageProps) {
 
                   <span className="flex items-center gap-3">
                     <span
-                      className="font-mono text-xs tabular-nums text-zinc-400"
+                      className="font-mono text-xs tabular-nums text-muted-foreground"
                       title="Uptime over the last 24 hours"
                     >
                       {monitor.uptimePercentage === "—"
@@ -146,7 +149,7 @@ export function PublicStatusPage({ page }: PublicStatusPageProps) {
         )}
       </section>
 
-      <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
+      <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <span>
           {page.lastCheckedAt
             ? `Last check: ${formatTimestamp(page.lastCheckedAt)} UTC`
@@ -154,7 +157,7 @@ export function PublicStatusPage({ page }: PublicStatusPageProps) {
         </span>
         <Link
           href="/"
-          className="rounded outline-none transition-colors hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="rounded outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           Monitored with DevPulse
         </Link>

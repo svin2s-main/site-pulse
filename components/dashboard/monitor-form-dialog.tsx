@@ -32,6 +32,9 @@ const INTERVAL_OPTIONS: { value: CheckInterval; label: string }[] = [
   { value: "1h", label: "Every hour" },
 ];
 
+const FIELD_CLASS =
+  "rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring";
+
 export function MonitorFormDialog({
   open,
   onOpenChange,
@@ -43,21 +46,21 @@ export function MonitorFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl outline-none">
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay backdrop-blur-sm" />
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card shadow-2xl outline-none">
           <div className="p-5">
             <div className="pr-8">
-              <DialogTitle className="text-base font-semibold text-zinc-100">
+              <DialogTitle className="text-base font-semibold text-foreground">
                 {isEdit ? "Edit Monitor" : "Add New Monitor"}
               </DialogTitle>
-              <DialogDescription className="mt-1 text-xs text-zinc-500">
+              <DialogDescription className="mt-1 text-xs text-muted-foreground">
                 {isEdit
                   ? "Update the endpoint details or how often it is checked."
                   : "Track a new HTTP(S) endpoint for availability and response time."}
               </DialogDescription>
             </div>
 
-            <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-zinc-500 outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-indigo-500">
+            <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
               <X className="size-4" aria-hidden="true" />
               <span className="sr-only">Close</span>
             </DialogPrimitive.Close>
@@ -135,7 +138,7 @@ function MonitorFormFields({
       <div className="flex flex-col gap-1.5">
         <label
           htmlFor="monitor-name"
-          className="text-xs font-medium text-zinc-300"
+          className="text-xs font-medium text-foreground/80"
         >
           Name
         </label>
@@ -147,14 +150,14 @@ function MonitorFormFields({
           placeholder="API Gateway"
           required
           maxLength={100}
-          className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-700 focus:ring-2 focus:ring-indigo-500"
+          className={FIELD_CLASS}
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label
           htmlFor="monitor-url"
-          className="text-xs font-medium text-zinc-300"
+          className="text-xs font-medium text-foreground/80"
         >
           URL
         </label>
@@ -165,14 +168,14 @@ function MonitorFormFields({
           onChange={(event) => setUrl(event.target.value)}
           placeholder="https://api.example.com/health"
           required
-          className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-zinc-700 focus:ring-2 focus:ring-indigo-500"
+          className={`${FIELD_CLASS} font-mono`}
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label
           htmlFor="monitor-interval"
-          className="text-xs font-medium text-zinc-300"
+          className="text-xs font-medium text-foreground/80"
         >
           Check interval
         </label>
@@ -182,7 +185,7 @@ function MonitorFormFields({
           onChange={(event) =>
             setInterval(event.target.value as CheckInterval)
           }
-          className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none transition-colors focus:border-zinc-700 focus:ring-2 focus:ring-indigo-500"
+          className={FIELD_CLASS}
         >
           {INTERVAL_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -193,7 +196,7 @@ function MonitorFormFields({
       </div>
 
       {error && (
-        <p role="alert" className="text-xs font-medium text-rose-500">
+        <p role="alert" className="text-xs font-medium text-danger">
           {error}
         </p>
       )}
@@ -202,14 +205,14 @@ function MonitorFormFields({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 outline-none transition-colors hover:bg-zinc-900 focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/80 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={isPending}
-          className="inline-flex items-center gap-1.5 rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white outline-none transition-colors hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? (
             <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />

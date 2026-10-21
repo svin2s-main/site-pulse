@@ -15,7 +15,7 @@ export function CallbackNotice() {
   }
 
   return (
-    <p role="alert" className="text-xs font-medium text-rose-500">
+    <p role="alert" className="text-xs font-medium text-danger">
       We couldn&apos;t confirm your email. Try signing in, or sign up again.
     </p>
   );

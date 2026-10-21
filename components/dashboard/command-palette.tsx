@@ -34,7 +34,7 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 px-4 pt-[15vh] backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-overlay px-4 pt-[15vh] backdrop-blur-sm"
       onClick={onClose}
       role="presentation"
       onKeyDown={(event) => {
@@ -42,14 +42,17 @@ export function CommandPalette({
       }}
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl shadow-black/50 outline-none"
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-popover shadow-2xl shadow-black/20 outline-none dark:shadow-black/50"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
       >
-        <div className="flex items-center gap-2 border-b border-zinc-800 px-3.5 py-3">
-          <Search className="size-4 text-zinc-500" aria-hidden="true" />
+        <div className="flex items-center gap-2 border-b border-border px-3.5 py-3">
+          <Search
+            className="size-4 text-muted-foreground"
+            aria-hidden="true"
+          />
           <input
             autoFocus
             value={query}
@@ -62,15 +65,15 @@ export function CommandPalette({
               }
             }}
             placeholder="Search monitors, endpoints, actions..."
-            className="w-full bg-transparent text-sm text-zinc-200 outline-none placeholder:text-zinc-600"
+            className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
-          <kbd className="rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">
+          <kbd className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
             ESC
           </kbd>
         </div>
         <div className="max-h-72 overflow-y-auto p-1.5">
           {results.length === 0 ? (
-            <p className="px-2.5 py-6 text-center text-sm text-zinc-500">
+            <p className="px-2.5 py-6 text-center text-sm text-muted-foreground">
               No monitors match “{query}”
             </p>
           ) : (
@@ -82,7 +85,7 @@ export function CommandPalette({
                   onSelectMonitor(monitor.id);
                   onClose();
                 }}
-                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none transition-colors hover:bg-zinc-800 focus-visible:bg-zinc-800"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
               >
                 <span
                   className={cn(
@@ -92,14 +95,14 @@ export function CommandPalette({
                   aria-hidden="true"
                 />
                 <Activity
-                  className="size-3.5 shrink-0 text-zinc-500"
+                  className="size-3.5 shrink-0 text-muted-foreground"
                   aria-hidden="true"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-zinc-200">
+                  <span className="block truncate text-sm text-foreground">
                     {monitor.name}
                   </span>
-                  <span className="block truncate font-mono text-[11px] text-zinc-500">
+                  <span className="block truncate font-mono text-[11px] text-muted-foreground">
                     {monitor.url}
                   </span>
                 </span>

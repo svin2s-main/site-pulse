@@ -17,11 +17,11 @@ function HeartbeatBar({ point, status }: HeartbeatBarProps) {
   return (
     <span
       className={cn(
-        "h-5 w-[3px] shrink-0 rounded-full",
+        "h-5 w-[3px] shrink-0 rounded-full transition-colors",
         failed
-          ? "bg-rose-500 shadow-[0_0_4px_1px_rgba(244,63,94,0.5)]"
+          ? "bg-danger"
           : isSlow
-            ? "bg-amber-400"
+            ? "bg-warning"
             : STATUS_CONFIG[status].barClass,
       )}
     />
@@ -35,7 +35,9 @@ type HeartbeatsProps = {
 
 export function Heartbeats({ series, status }: HeartbeatsProps) {
   if (series.length === 0) {
-    return <span className="text-[11px] text-zinc-600">No checks yet</span>;
+    return (
+      <span className="text-[11px] text-muted-foreground">No checks yet</span>
+    );
   }
 
   return (
@@ -44,6 +46,7 @@ export function Heartbeats({ series, status }: HeartbeatsProps) {
       role="img"
       aria-label={`Last ${series.length} health checks: ${ariaSummary(series)}`}
     >
+      {/* Newest first, matching the order the data arrives in. */}
       {series.map((point, index) => (
         <HeartbeatBar key={index} point={point} status={status} />
       ))}

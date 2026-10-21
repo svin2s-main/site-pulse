@@ -11,33 +11,34 @@ export type StatusConfig = {
 export const STATUS_CONFIG: Record<MonitorStatus, StatusConfig> = {
   operational: {
     label: "Operational",
-    dotClass: "bg-emerald-400 shadow-[0_0_6px_2px_rgba(52,211,153,0.5)]",
-    textClass: "text-emerald-400",
-    badgeClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    barClass: "bg-emerald-500",
+    dotClass: "bg-success",
+    textClass: "text-success",
+    badgeClass: "bg-success/10 text-success border-success/20",
+    barClass: "bg-success",
   },
   degraded: {
     label: "Degraded",
-    dotClass: "bg-amber-400 shadow-[0_0_6px_2px_rgba(251,191,36,0.5)]",
-    textClass: "text-amber-400",
-    badgeClass: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    barClass: "bg-amber-400",
+    dotClass: "bg-warning",
+    textClass: "text-warning",
+    badgeClass: "bg-warning/10 text-warning border-warning/20",
+    barClass: "bg-warning",
   },
   down: {
     label: "Down",
-    dotClass: "bg-rose-500 shadow-[0_0_6px_2px_rgba(244,63,94,0.5)]",
-    textClass: "text-rose-500",
-    badgeClass: "bg-rose-500/10 text-rose-500 border-rose-500/20",
-    barClass: "bg-rose-500",
+    dotClass: "bg-danger",
+    textClass: "text-danger",
+    badgeClass: "bg-danger/10 text-danger border-danger/20",
+    barClass: "bg-danger",
   },
   // A monitor that has not completed its first check yet. Deliberately neutral:
   // it is neither healthy nor broken.
   pending: {
     label: "Pending",
-    dotClass: "bg-zinc-400",
-    textClass: "text-zinc-400",
-    badgeClass: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
-    barClass: "bg-zinc-700",
+    dotClass: "bg-muted-foreground",
+    textClass: "text-muted-foreground",
+    badgeClass:
+      "bg-muted text-muted-foreground border-muted-foreground/30",
+    barClass: "bg-muted-foreground/40",
   },
 };
 

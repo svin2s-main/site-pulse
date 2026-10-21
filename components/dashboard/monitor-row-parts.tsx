@@ -1,7 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check, MoreHorizontal, Pencil, Pause, Trash2, RefreshCw, Loader2 } from "lucide-react";
+import {
+  Copy,
+  Check,
+  MoreHorizontal,
+  Pencil,
+  Pause,
+  Trash2,
+  RefreshCw,
+  Loader2,
+} from "lucide-react";
 import type { MonitorStatus } from "@/types/monitor";
 import {
   DropdownMenu,
@@ -36,11 +45,11 @@ export function CopyButton({ value }: CopyButtonProps) {
         event.stopPropagation();
         await handleCopy();
       }}
-      className="rounded p-0.5 text-zinc-600 outline-none transition-colors hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-indigo-500"
+      className="rounded p-0.5 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={copied ? "Copied" : "Copy endpoint URL"}
     >
       {copied ? (
-        <Check className="size-3.5 text-emerald-400" aria-hidden="true" />
+        <Check className="size-3.5 text-success" aria-hidden="true" />
       ) : (
         <Copy className="size-3.5" aria-hidden="true" />
       )}
@@ -69,7 +78,7 @@ export function ActionMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         onClick={(event) => event.stopPropagation()}
-        className="rounded p-1 text-zinc-500 outline-none transition-colors hover:bg-zinc-800 hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-indigo-500"
+        className="rounded p-1 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Monitor actions"
       >
         <MoreHorizontal className="size-4" aria-hidden="true" />
@@ -111,7 +120,7 @@ export function ActionMenu({
           {paused ? "Resume" : "Pause"}
         </DropdownMenuItem>
         <DropdownMenuItem
-          className="text-rose-500 focus:text-rose-400 [&_svg]:text-rose-500 focus:[&_svg]:text-rose-400"
+          className="text-danger focus:text-danger [&_svg]:text-danger focus:[&_svg]:text-danger"
           onSelect={(event) => {
             event.stopPropagation();
             onDelete();
@@ -137,7 +146,10 @@ export function StatusBadge({ status }: StatusBadgeProps) {
         config.badgeClass,
       )}
     >
-      <span className={cn("size-1.5 rounded-full", config.dotClass)} aria-hidden="true" />
+      <span
+        className={cn("size-1.5 rounded-full", config.dotClass)}
+        aria-hidden="true"
+      />
       {config.label}
     </span>
   );

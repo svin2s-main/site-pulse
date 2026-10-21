@@ -8,6 +8,7 @@ import {
   Loader2,
   LogOut,
   Plus,
+  RefreshCw,
   Search,
 } from "lucide-react";
 import type { DashboardSummary } from "@/app/actions/monitors";
@@ -20,11 +21,19 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { formatRelativeTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 type HeaderProps = {
   summary: DashboardSummary | null;
   userEmail: string | null;
+  /** Epoch ms of the last successful background refresh. */
+  lastUpdatedAt: number;
+  /** Epoch ms used to render the relative "updated Ns ago" label. */
+  now: number;
+  isRefreshing: boolean;
+  onRefresh: () => void;
   onOpenCommandPalette: () => void;
   onAddMonitor: () => void;
 };
@@ -44,36 +53,48 @@ type PillState = "empty" | "paused" | "pending" | "healthy" | "attention";
 
 const PILL: Record<
   PillState,
-  { label: string; className: string; dotClass: string; ping: boolean }
+  {
+    label: string;
+    /** Compact label for phones, where the full label would not fit. */
+    shortLabel: string;
+    className: string;
+    dotClass: string;
+    ping: boolean;
+  }
 > = {
   empty: {
     label: "No monitors yet",
-    className: "border-zinc-800 bg-zinc-900/80 text-zinc-400",
-    dotClass: "bg-zinc-500",
+    shortLabel: "Empty",
+    className: "border-border bg-card text-muted-foreground",
+    dotClass: "bg-muted-foreground",
     ping: false,
   },
   paused: {
     label: "All monitors paused",
-    className: "border-zinc-800 bg-zinc-900/80 text-zinc-400",
-    dotClass: "bg-zinc-500",
+    shortLabel: "Paused",
+    className: "border-border bg-card text-muted-foreground",
+    dotClass: "bg-muted-foreground",
     ping: false,
   },
   pending: {
     label: "Awaiting first check",
-    className: "border-sky-500/20 bg-sky-500/10 text-sky-400",
-    dotClass: "bg-sky-400",
+    shortLabel: "Pending",
+    className: "border-info/20 bg-info/10 text-info",
+    dotClass: "bg-info",
     ping: false,
   },
   healthy: {
     label: "All Systems Operational",
-    className: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-    dotClass: "bg-emerald-400",
+    shortLabel: "Healthy",
+    className: "border-success/20 bg-success/10 text-success",
+    dotClass: "bg-success",
     ping: true,
   },
   attention: {
     label: "Attention needed",
-    className: "border-amber-500/20 bg-amber-500/10 text-amber-400",
-    dotClass: "bg-amber-400",
+    shortLabel: "Issue",
+    className: "border-warning/20 bg-warning/10 text-warning",
+    dotClass: "bg-warning",
     ping: false,
   },
 };
@@ -98,6 +119,10 @@ function resolvePillState(summary: DashboardSummary | null): PillState {
 export function Header({
   summary,
   userEmail,
+  lastUpdatedAt,
+  now,
+  isRefreshing,
+  onRefresh,
   onOpenCommandPalette,
   onAddMonitor,
 }: HeaderProps) {
@@ -110,17 +135,21 @@ export function Header({
   };
 
   const pill = PILL[resolvePillState(summary)];
+  const updatedLabel = formatRelativeTime(lastUpdatedAt, now);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/70 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
+    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
         {/* Brand */}
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="flex size-7 items-center justify-center rounded-md bg-indigo-500">
-              <Activity className="size-4 text-white" aria-hidden="true" />
+            <div className="flex size-7 items-center justify-center rounded-md bg-primary">
+              <Activity
+                className="size-4 text-primary-foreground"
+                aria-hidden="true"
+              />
             </div>
-            <span className="text-sm font-semibold tracking-tight text-zinc-100">
+            <span className="hidden text-sm font-semibold tracking-tight text-foreground sm:inline">
               DevPulse
             </span>
           </div>
@@ -134,31 +163,57 @@ export function Header({
             <span className="relative flex size-1.5">
               {pill.ping && (
                 <span
-                  className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-80"
+                  className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-80"
                   aria-hidden="true"
                 />
               )}
               <span
-                className={cn("relative inline-flex size-1.5 rounded-full", pill.dotClass)}
+                className={cn(
+                  "relative inline-flex size-1.5 rounded-full",
+                  pill.dotClass,
+                )}
                 aria-hidden="true"
               />
             </span>
-            {pill.label}
+            {/* On phones the pill switches to a short label so the header never
+                overflows; the full label remains available via title. */}
+            <span className="md:hidden">{pill.shortLabel}</span>
+            <span className="hidden max-w-[14rem] truncate md:inline">
+              {pill.label}
+            </span>
           </span>
         </div>
 
         <div className="flex-1" />
 
+        {/* Live refresh status */}
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          className="flex items-center gap-1.5 rounded-md border border-border bg-card/80 px-1.5 py-1.5 text-[11px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 sm:px-2"
+          title="Refresh dashboard data"
+          aria-label={`Refresh dashboard. Updated ${updatedLabel}.`}
+        >
+          <RefreshCw
+            className={cn("size-3", isRefreshing && "animate-spin")}
+            aria-hidden="true"
+          />
+          <span className="hidden font-mono tabular-nums sm:inline">
+            {isRefreshing ? "Refreshing…" : updatedLabel}
+          </span>
+        </button>
+
         {/* Command palette trigger */}
         <button
           type="button"
           onClick={onOpenCommandPalette}
-          className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-500 outline-none transition-colors hover:border-zinc-700 hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="flex items-center gap-2 rounded-md border border-border bg-card/80 px-2.5 py-1.5 text-xs text-muted-foreground outline-none transition-colors hover:border-ring/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Open command palette"
         >
           <Search className="size-3.5" aria-hidden="true" />
           <span className="hidden sm:inline">Search...</span>
-          <kbd className="hidden items-center gap-0.5 rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500 sm:flex">
+          <kbd className="hidden items-center gap-0.5 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:flex">
             <Command className="size-2.5" aria-hidden="true" />K
           </kbd>
         </button>
@@ -167,20 +222,22 @@ export function Header({
         <button
           type="button"
           onClick={onAddMonitor}
-          className="flex items-center gap-1.5 rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white outline-none transition-colors hover:bg-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+          className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:px-3"
           title="Add a new monitor"
         >
           <Plus className="size-3.5" aria-hidden="true" />
           <span className="hidden sm:inline">Add New Monitor</span>
         </button>
 
+        <ThemeToggle />
+
         {/* Profile */}
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Open user menu"
           >
-            <div className="flex size-7 items-center justify-center rounded-full border border-zinc-800 bg-zinc-800 text-xs font-semibold text-zinc-300">
+            <div className="flex size-7 items-center justify-center rounded-full border border-border bg-muted text-xs font-semibold text-foreground">
               {initialsFromEmail(userEmail)}
             </div>
           </DropdownMenuTrigger>

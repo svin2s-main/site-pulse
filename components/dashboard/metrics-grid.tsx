@@ -1,6 +1,7 @@
 import { Activity, Zap, Server, AlertTriangle } from "lucide-react";
 import type { DashboardSummary } from "@/app/actions/monitors";
 import { toUptimeDisplay, toLatencyDisplay } from "@/lib/mappers";
+import { cn } from "@/lib/utils";
 
 type MetricCardProps = {
   label: string;
@@ -12,14 +13,19 @@ type MetricCardProps = {
 
 function MetricCard({ label, value, icon, valueClass, trend }: MetricCardProps) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-4 backdrop-blur-md transition-colors hover:border-zinc-700">
+    <div className="rounded-lg border border-border bg-card/80 p-4 backdrop-blur-md transition-colors hover:border-ring/40">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-zinc-500">{label}</span>
-        <span className="text-zinc-600">{icon}</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          {label}
+        </span>
+        <span className="text-muted-foreground/70">{icon}</span>
       </div>
       <div className="mt-2 flex items-end justify-between gap-2">
         <span
-          className={`font-mono text-2xl font-semibold tracking-tight ${valueClass ?? "text-zinc-100"}`}
+          className={cn(
+            "font-mono text-2xl font-semibold tracking-tight",
+            valueClass ?? "text-foreground",
+          )}
         >
           {value}
         </span>
@@ -30,33 +36,42 @@ function MetricCard({ label, value, icon, valueClass, trend }: MetricCardProps) 
 }
 
 const TREND_NEUTRAL =
-  "rounded-full border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400";
+  "rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground";
 const TREND_GOOD =
-  "rounded-full border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400";
+  "rounded-full border border-success/20 bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success";
 const TREND_WARN =
-  "rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400";
+  "rounded-full border border-warning/20 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning";
 
 export function MetricsGrid({ summary }: { summary: DashboardSummary | null }) {
   const uptime = summary ? toUptimeDisplay(summary) : "—";
   const latency = summary ? toLatencyDisplay(summary.averageLatencyMs) : "—";
+  // Active / total is the headline; the operational breakdown moves into the
+  // trend badge so the value never has to wrap on a phone.
   const active = summary
-    ? `${summary.operationalCount} / ${summary.totalCount} Operational`
+    ? `${summary.activeCount} / ${summary.totalCount}`
     : "—";
-  const incidents = summary
-    ? `${summary.incidents24h} ${summary.incidents24h === 1 ? "Incident" : "Incidents"}`
-    : "—";
+  const incidents = summary ? String(summary.incidents24h) : "—";
 
   // The uptime and latency cards are labelled "Last 24h" because that is the
   // window the aggregation actually uses.
   const activeTrend = (() => {
     if (!summary) return { label: "—", className: TREND_NEUTRAL };
+    if (summary.activeCount === 0) {
+      return { label: "All paused", className: TREND_NEUTRAL };
+    }
     if (summary.incidents24h > 0) {
-      return { label: "Issue detected", className: TREND_WARN };
+      return {
+        label: `${summary.activeCount - summary.operationalCount} not operational`,
+        className: TREND_WARN,
+      };
     }
     if (summary.pendingCount > 0) {
-      return { label: "Awaiting first check", className: TREND_NEUTRAL };
+      return {
+        label: `${summary.pendingCount} awaiting check`,
+        className: TREND_NEUTRAL,
+      };
     }
-    return { label: "All good", className: TREND_GOOD };
+    return { label: "All operational", className: TREND_GOOD };
   })();
 
   const incidentsTrend = (() => {
@@ -64,7 +79,7 @@ export function MetricsGrid({ summary }: { summary: DashboardSummary | null }) {
     if (summary.incidents24h === 0) {
       return { label: "Quiet day", className: TREND_GOOD };
     }
-    return { label: "Issue detected", className: TREND_WARN };
+    return { label: "Needs review", className: TREND_WARN };
   })();
 
   return (
@@ -73,14 +88,14 @@ export function MetricsGrid({ summary }: { summary: DashboardSummary | null }) {
         label="Overall Uptime"
         value={uptime}
         icon={<Activity className="size-4" aria-hidden="true" />}
-        valueClass="text-emerald-400"
+        valueClass="text-success"
         trend={<span className={TREND_NEUTRAL}>Last 24h</span>}
       />
       <MetricCard
         label="Average Latency"
         value={latency}
         icon={<Zap className="size-4" aria-hidden="true" />}
-        valueClass="text-amber-400"
+        valueClass="text-warning"
         trend={<span className={TREND_NEUTRAL}>Last 24h</span>}
       />
       <MetricCard
@@ -95,6 +110,7 @@ export function MetricsGrid({ summary }: { summary: DashboardSummary | null }) {
         label="Incidents (Last 24h)"
         value={incidents}
         icon={<AlertTriangle className="size-4" aria-hidden="true" />}
+        valueClass={summary && summary.incidents24h > 0 ? "text-danger" : undefined}
         trend={
           <span className={incidentsTrend.className}>{incidentsTrend.label}</span>
         }
