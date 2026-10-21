@@ -30,6 +30,8 @@ export type Monitor = {
   /** Raw check interval value as stored in the database (e.g. "1m"). */
   interval: CheckInterval;
   paused: boolean;
+  /** Whether status transitions for this monitor produce Telegram alerts. */
+  alertsEnabled: boolean;
   heartbeats: HeartbeatPoint[];
   /** Days until the TLS certificate expires; null when tracking is unavailable. */
   sslExpiresInDays: number | null;

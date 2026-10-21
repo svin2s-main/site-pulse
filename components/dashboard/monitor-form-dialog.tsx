@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Loader2, Plus, Save, X } from "lucide-react";
+import { Bell, Loader2, Plus, Save, X } from "lucide-react";
 import {
   Dialog,
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import {
   createMonitorAction,
   updateMonitorAction,
@@ -47,7 +48,7 @@ export function MonitorFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay backdrop-blur-sm" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card shadow-2xl outline-none">
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-card shadow-2xl outline-none">
           <div className="p-5">
             <div className="pr-8">
               <DialogTitle className="text-base font-semibold text-foreground">
@@ -98,6 +99,9 @@ function MonitorFormFields({
   const [interval, setInterval] = useState<CheckInterval>(
     monitor?.interval ?? "1m",
   );
+  const [alertsEnabled, setAlertsEnabled] = useState(
+    monitor?.alertsEnabled ?? true,
+  );
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -107,8 +111,19 @@ function MonitorFormFields({
 
     startTransition(async () => {
       const result = monitor
-        ? await updateMonitorAction({ id: monitor.id, name, url, interval })
-        : await createMonitorAction({ name, url, interval });
+        ? await updateMonitorAction({
+            id: monitor.id,
+            name,
+            url,
+            interval,
+            alertsEnabled,
+          })
+        : await createMonitorAction({
+            name,
+            url,
+            interval,
+            alertsEnabled,
+          });
 
       if (!result.success) {
         setError(result.error);
@@ -123,6 +138,7 @@ function MonitorFormFields({
           name: result.data.name,
           url: result.data.url,
           interval: result.data.interval,
+          alertsEnabled: result.data.alerts_enabled,
         });
       } else {
         // Creating: the fresh row has no check logs yet.
@@ -193,6 +209,29 @@ function MonitorFormFields({
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-2.5">
+        <div className="flex items-start gap-2">
+          <Bell
+            className="mt-0.5 size-3.5 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <div>
+            <p className="text-xs font-medium text-foreground/80">
+              Telegram alerts
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Notify when this monitor goes down or recovers. Requires a
+              connected Telegram channel.
+            </p>
+          </div>
+        </div>
+        <Switch
+          checked={alertsEnabled}
+          onCheckedChange={setAlertsEnabled}
+          aria-label="Send Telegram alerts for this monitor"
+        />
       </div>
 
       {error && (

@@ -10,6 +10,7 @@ import {
   isDegradedLatency,
   isFailureStatus,
 } from "@/lib/monitoring";
+import { dispatchStatusAlert } from "@/lib/alerts";
 
 type MonitorRow = Database["public"]["Tables"]["monitors"]["Row"];
 
@@ -219,6 +220,17 @@ export async function checkMonitor(
     const detail = (updateResult.error ?? logResult.error)?.message;
     throw new Error(`Failed to persist check: ${detail ?? "unknown error"}`);
   }
+
+  // Alert delivery is awaited so a manual check reliably notifies before the
+  // action returns. The dispatcher contains all of its own errors and uses a
+  // bounded Telegram request, so a failed alert can never fail the check.
+  await dispatchStatusAlert({
+    monitor,
+    nextStatus: status,
+    statusCode: outcome.statusCode,
+    latencyMs,
+    errorMessage: outcome.errorMessage,
+  });
 
   return true;
 }

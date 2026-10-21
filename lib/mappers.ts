@@ -137,6 +137,7 @@ export function toDashboardMonitor(
     uptimePercentage: toUptimePercentage(recentLogs),
     interval: monitor.interval,
     paused: monitor.is_paused,
+    alertsEnabled: monitor.alerts_enabled,
     heartbeats: toHeartbeats(recentLogs),
     sslExpiresInDays,
     sslValid,

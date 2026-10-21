@@ -91,11 +91,23 @@ async function handleStatusPage(request: NextRequest) {
   return NextResponse.next();
 }
 
+/** System endpoints authenticate with their own shared secrets, not cookies. */
+const SYSTEM_ENDPOINTS = new Set([
+  "/api/cron/check",
+  "/api/telegram/webhook",
+]);
+
 export async function proxy(request: NextRequest) {
   // Public status pages need no session, so they are handled before any auth
   // work: this skips a pointless `getUser()` round trip per page view.
   if (request.nextUrl.pathname.startsWith(PUBLIC_STATUS_PREFIX)) {
     return handleStatusPage(request);
+  }
+
+  // Machine-to-machine endpoints must not depend on the Supabase auth service
+  // being reachable; their route handlers verify their own secrets.
+  if (SYSTEM_ENDPOINTS.has(request.nextUrl.pathname)) {
+    return NextResponse.next();
   }
 
   let response = NextResponse.next();

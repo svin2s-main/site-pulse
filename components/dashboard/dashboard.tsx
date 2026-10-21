@@ -24,9 +24,11 @@ import {
 import { MonitorDrawer } from "@/components/dashboard/monitor-drawer";
 import { CommandPalette } from "@/components/dashboard/command-palette";
 import { StatusPageSettings } from "@/components/dashboard/status-page-settings";
+import { TelegramSettingsCard } from "@/components/dashboard/telegram-settings";
 import { MonitorFormDialog } from "@/components/dashboard/monitor-form-dialog";
 import { suggestStatusPageSlug } from "@/lib/slug";
 import type { StatusPageSummary } from "@/types/status-page";
+import type { TelegramSettings } from "@/types/alerts";
 
 /** Background refresh cadence while the tab is visible. */
 const REFRESH_INTERVAL_MS = 30_000;
@@ -38,6 +40,7 @@ type DashboardProps = {
   initialMonitors: Monitor[];
   initialSummary: DashboardSummary | null;
   initialStatusPage: StatusPageSummary | null;
+  initialTelegram: TelegramSettings;
   userEmail: string | null;
   loadError: string | null;
 };
@@ -52,6 +55,7 @@ export function Dashboard({
   initialMonitors,
   initialSummary,
   initialStatusPage,
+  initialTelegram,
   userEmail,
   loadError,
 }: DashboardProps) {
@@ -65,6 +69,7 @@ export function Dashboard({
   const [statusPage, setStatusPage] = useState<StatusPageSummary | null>(
     initialStatusPage,
   );
+  const [telegram, setTelegram] = useState<TelegramSettings>(initialTelegram);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [checkingIds, setCheckingIds] = useState<string[]>([]);
@@ -137,6 +142,7 @@ export function Dashboard({
       );
       setSummaryBase(result.data.summary);
       setStatusPage(result.data.statusPage);
+      setTelegram(result.data.telegram);
       setLastUpdatedAt(Date.now());
     } catch {
       // A transient background failure must not wipe the last good data.
@@ -260,6 +266,7 @@ export function Dashboard({
       );
       setSummaryBase(result.data.summary);
       setStatusPage(result.data.statusPage);
+      setTelegram(result.data.telegram);
       setLastUpdatedAt(Date.now());
     } finally {
       setCheckingIds((current) => current.filter((value) => value !== id));
@@ -399,6 +406,11 @@ export function Dashboard({
             onDelete={handleDelete}
           />
         </section>
+
+        <TelegramSettingsCard
+          settings={telegram}
+          onSettingsChange={setTelegram}
+        />
 
         <StatusPageSettings
           statusPage={statusPage}

@@ -3,6 +3,7 @@ import { getDashboardDataAction } from "@/app/actions/monitors";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { toDashboardMonitor } from "@/lib/mappers";
 import { getCurrentUser } from "@/lib/auth";
+import type { TelegramSettings } from "@/types/alerts";
 
 /**
  * Async Server Component that loads real dashboard data and hands it to the
@@ -34,6 +35,17 @@ export async function DashboardLoader() {
 
   const summary = result.success === true ? result.data.summary : null;
 
+  const telegram: TelegramSettings =
+    result.success === true
+      ? result.data.telegram
+      : {
+          isConnected: false,
+          isActive: false,
+          username: null,
+          notifyDegraded: false,
+          botUsername: null,
+        };
+
   return (
     <Dashboard
       initialMonitors={monitors}
@@ -41,6 +53,7 @@ export async function DashboardLoader() {
       initialStatusPage={
         result.success === true ? result.data.statusPage : null
       }
+      initialTelegram={telegram}
       userEmail={user.email}
       loadError={result.success ? null : result.error}
     />

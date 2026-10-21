@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  BellOff,
   Clock,
   Loader2,
   RefreshCw,
@@ -107,6 +108,16 @@ function DrawerBody({
             <Clock className="size-3" aria-hidden="true" />
             {monitor.interval}
           </span>
+
+          {!monitor.alertsEnabled && (
+            <span
+              className="flex items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+              title="Telegram alerts are disabled for this monitor"
+            >
+              <BellOff className="size-3" aria-hidden="true" />
+              Alerts off
+            </span>
+          )}
 
           {/* `ssl_expires_at` is never populated yet, so the chip says so
               instead of claiming the certificate is expiring. */}

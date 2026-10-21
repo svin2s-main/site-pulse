@@ -14,9 +14,12 @@ Action layer, the cron check runner, and the public status pages.
 
 ## 1. Database Schema
 
-Migration: `supabase/migrations/0001_init.sql`
+Migrations:
+- `supabase/migrations/0001_init.sql` — monitors, logs, status pages
+- `supabase/migrations/0002_alerts.sql` — Telegram alert channels, link tokens,
+  alert delivery log, and `monitors.alerts_enabled`
 
-Apply it with:
+Apply them in order with:
 
 ```bash
 supabase db push          # from the project root
@@ -25,6 +28,11 @@ supabase db push          # from the project root
 
 If you don't already have a Supabase project linked, first run `supabase init`
 and `supabase link --project-ref <ref>`.
+
+> Apply `0002_alerts.sql` **before** deploying the Telegram build: the dashboard
+> selects `monitors.alerts_enabled`, so an unmigrated database makes monitor
+> loading fail. The Telegram *environment variables* are optional, but the
+> migration itself is not.
 
 ### Enums
 - `monitor_status` — `operational`, `degraded`, `down`, `paused`
@@ -38,15 +46,25 @@ and `supabase link --project-ref <ref>`.
 - **`check_logs`** — one row per health check; FK to `monitors` with
   `ON DELETE CASCADE`; indexed on `(monitor_id, created_at desc)`.
 - **`public_status_pages`** — one per user; live pages are publicly readable.
+- **`alert_channels`** — one Telegram channel per user; `telegram_chat_id` is
+  unique so a chat cannot receive duplicate alerts for two accounts.
+- **`telegram_link_tokens`** — SHA-256 hashes of single-use dashboard link
+  codes, with a 10-minute expiry and a `used_at` marker.
+- **`alert_events`** — delivery audit log and the source of the per-monitor
+  cooldown window.
+- **`monitors.alerts_enabled`** — per-monitor opt-in, default `true`.
 
 ### Row Level Security
-RLS is enabled on **all three tables**, with least-privilege policies:
+RLS is enabled on **all six tables**, with least-privilege policies:
 
 | Table | Policy intent |
 |-------|---------------|
 | `monitors` | Owners can SELECT/INSERT/UPDATE/DELETE their own rows (`auth.uid() = user_id`) |
 | `check_logs` | Owners can CRUD logs whose parent monitor they own (via `EXISTS` subquery) |
 | `public_status_pages` | Owners can CRUD their page; anyone can `SELECT` rows where `is_live = true` |
+| `alert_channels` | Owners can `SELECT`/`DELETE` their own channel. **No authenticated INSERT/UPDATE policy**: the webhook (service role) is the only writer of `telegram_chat_id`, and preference updates go through a server action with an explicit owner filter |
+| `telegram_link_tokens` | Owners can `SELECT`/`INSERT`/`DELETE` their own hashes; the webhook consumes them with the service role |
+| `alert_events` | Owners can `SELECT` their own events. **No authenticated INSERT policy**, so history cannot be forged |
 
 **Public reads (live status page):** `monitors` and `check_logs` also expose a
 SELECT policy gated on the owner having a live status page —
@@ -64,9 +82,10 @@ explicit `user_id` filters in the application layer.
   `cookies()`; `getAll`/`setAll` implemented per the current SSR contract.
 - **`client.ts`** — `createBrowserClient` for the browser.
 - **`admin.ts`** — a `server-only` client authenticated with the
-  **service-role key** (bypasses RLS). Used *exclusively* by the cron runner,
-  which acts on behalf of the system rather than a signed-in user. Never
-  import into Server Components/Server Actions/client code.
+  **service-role key** (bypasses RLS). Used by trusted background work: the cron
+  runner, the Telegram webhook, alert dispatch, and the narrowly-scoped
+  preference update. It never acts on an arbitrary user id supplied by a
+  client. Never import it into client code.
 - **`public.ts`** — a **cookie-less** anonymous client, used only by the public
   `/status/[slug]` route. It carries no session, so it can only ever read what
   the `anon` RLS policies (live status pages) allow.
@@ -83,13 +102,18 @@ predictable `ActionResponse<T>`:
 
 | Action | What it does |
 |--------|--------------|
-| `createMonitorAction(input)` | Validates `name` (1–100), `url` (http/https), `interval` (enum); `getUser()`; inserts owned monitor; `revalidatePath("/")` |
+| `createMonitorAction(input)` | Validates `name` (1–100), `url` (http/https), `interval` (enum), `alertsEnabled` (boolean, default true); `getUser()`; inserts owned monitor; `revalidatePath("/")` |
 | `updateMonitorAction(input)` | Same field validation as create, plus `id` (UUID); `getUser()`; updates the *owned* row (`id` + `user_id` filter); `revalidatePath("/")` |
 | `toggleMonitorPauseAction(id)` | Validates UUID; `getUser()`; flips `is_paused` on the *owned* row |
 | `deleteMonitorAction(id)` | Validates UUID; `getUser()`; deletes owned monitor (logs cascade) |
 | `checkMonitorNowAction(id)` | Validates UUID; `getUser()`; loads the *owned* row; refuses paused monitors and re-checks inside a 10s cooldown; runs one forced check through the request-scoped client (RLS still applies); returns the refreshed `DashboardData` |
 | `getDashboardDataAction()` | Fetches the user's monitors + last 30 `check_logs` each, plus their status-page settings; computes `overallUptimePercentage`, `averageLatencyMs`, operational/pending/active counts, and 24h incidents |
 | `saveStatusPageAction(input)` | (`app/actions/status-page.ts`) Validates/normalizes `slug`, `title`, `isLive`; `getUser()`; upserts the caller's own page (`onConflict: user_id`) and maps a duplicate slug to a friendly error |
+| `createTelegramLinkAction()` | (`app/actions/alerts.ts`) `getUser()`; generates a 32-byte single-use code, stores only its SHA-256 hash with a 10-minute expiry, returns the `t.me` deep link |
+| `getTelegramSettingsAction()` | `getUser()`; returns the caller's channel state for the dashboard card and post-link polling |
+| `updateTelegramPreferencesAction(input)` | Validates `notifyDegraded`; `getUser()`; updates the caller's own channel through the server (no authenticated UPDATE policy) |
+| `sendTelegramTestAction()` | `getUser()`; sends one test message to the caller's linked chat |
+| `disconnectTelegramAction()` | `getUser()`; deletes the caller's own channel (`user_id` + `type` filter) |
 
 Security points:
 - **Auth via `getUser()`** (never `getSession()`) on every action.
@@ -121,6 +145,8 @@ A dynamic GET Route Handler triggered by an external scheduler:
      (a request with no response at all is stored as `status_code = 0`)
 4. Persist the outcome: update `monitors.status`/`last_latency_ms` and insert a
    `check_logs` row.
+5. After a status **transition**, dispatch a Telegram alert (below). Alert
+   errors are caught inside the dispatcher and can never fail the check.
 
 The same runner also powers the dashboard's per-monitor **"Check now"** action
 (`checkMonitorNowAction`), which passes a request-scoped client instead of the
@@ -159,7 +185,76 @@ frequency. Re-running it is always safe.
 
 ---
 
-## 5. Public Status Pages (`/status/[slug]`)
+## 5. Telegram Alerts (`lib/alerts.ts`, `app/api/telegram/webhook/route.ts`)
+
+One shared DevPulse bot serves every account. Users never paste a chat id or a
+bot token; linking is a short-lived deep-link exchange:
+
+1. Dashboard → **Telegram Alerts** → **Connect Telegram** calls
+   `createTelegramLinkAction`, which stores only `sha256(code)` with a
+   10-minute expiry and returns `https://t.me/<bot>?start=<code>`.
+2. The user opens the link and presses **Start**. Telegram calls the webhook
+   with the `X-Telegram-Bot-Api-Secret-Token` header.
+3. The webhook **atomically consumes** the code with a conditional update
+   (`used_at IS NULL AND expires_at > now()`), then upserts the chat into
+   `alert_channels` using the service role.
+4. `/stop` sets `is_active = false`; a new dashboard link re-links the chat.
+
+Delivery rules (`dispatchStatusAlert`, called from the check runner after the
+row and log are persisted):
+
+- **down** — any transition into `down`
+- **recovered** — `down` → `operational`
+- **degraded** — transitions into `degraded`, only when the owner opted in
+  (off by default)
+- Per-monitor `alerts_enabled` (default `true`) gates delivery; the monitor form
+  exposes it and the drawer shows an "Alerts off" chip.
+- Down/degraded alerts share a **10-minute per-monitor cooldown**; recoveries
+  are always sent so an outage is not left without its "back up" message.
+- Manual **Check now** runs through the same runner and therefore also alerts.
+- Messages HTML-escape the monitor name/URL/error and contain status, latency,
+  and a UTC timestamp. The Telegram request is bounded to **8 seconds**.
+- A failed send is logged and swallowed: alerts can never fail a health check,
+  and `alert_events` is written only after a successful send.
+
+### Setup
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) (`/newbot`). Note the
+   token and the username.
+2. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (without `@`), and
+   `TELEGRAM_WEBHOOK_SECRET` (`openssl rand -hex 32`) locally and in Vercel.
+3. Apply the migration: `supabase db push`.
+4. Deploy, then register the webhook once:
+
+   ```bash
+   curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+     -H "content-type: application/json" \
+     -d '{
+       "url": "'"${APP_URL}"'/api/telegram/webhook",
+       "secret_token": "'"${TELEGRAM_WEBHOOK_SECRET}"'"
+     }'
+   ```
+
+   Check it with
+   `curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"`.
+   On PowerShell, use `Invoke-RestMethod` with the same JSON body.
+5. Open the dashboard, connect Telegram, and use **Send test** to verify.
+
+### Security notes
+
+- The bot token is **server-only** and is never logged or exposed to the client.
+- Deep-link codes are random (32 bytes), stored only as hashes, single-use, and
+  expire after 10 minutes.
+- The webhook secret is separate from the bot token and compared in constant
+  time; a missing secret rejects every request.
+- `alert_channels` has no authenticated INSERT/UPDATE policy, so a user cannot
+  repoint `telegram_chat_id` at another chat through PostgREST.
+- `alert_events` has no authenticated INSERT policy, so delivery history cannot
+  be forged.
+
+---
+
+## 6. Public Status Pages (`/status/[slug]`)
 
 Each user can publish **one** status page (`public_status_pages.user_id` is
 unique) and share it as `/status/<slug>`. The dashboard's "Public Status Page"
@@ -207,7 +302,7 @@ overwriting another user's page.
 
 ---
 
-## 6. Environment Variables
+## 7. Environment Variables
 
 Copy `.env.example` → `.env` and fill in values:
 
@@ -218,11 +313,18 @@ Copy `.env.example` → `.env` and fill in values:
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | **server-only** | admin key (bypasses RLS); cron runner only |
 | `NEXT_PUBLIC_APP_URL` | no | public | base URL for the app (also used to build public status-page links) |
 | `CRON_SECRET` | yes* | server-only | bearer secret for `/api/cron/check` |
+| `TELEGRAM_BOT_TOKEN` | no | **server-only** | token for the shared Telegram bot |
+| `TELEGRAM_BOT_USERNAME` | no | server-side (non-secret) | bot username used to build `t.me` deep links |
+| `TELEGRAM_WEBHOOK_SECRET` | no | **server-only** | value Telegram echoes in `X-Telegram-Bot-Api-Secret-Token` |
 
 \* Required for the cron runner to work; the app builds and runs without it, but
 every request to `/api/cron/check` is then rejected with `403`. Generate with
 `openssl rand -hex 32` and set the same value in your scheduler
 (Vercel env var or the `CRON_SECRET` GitHub Actions secret).
+
+Telegram is optional: without the three `TELEGRAM_*` values the dashboard still
+works, the card reports that alerts are not configured, and the webhook rejects
+all requests. The app never asks users for a bot token or chat id.
 
 `.env` is git-ignored; `.env.example` is committed with placeholders. `lib/env.ts`
 validates required secrets **lazily at point-of-use** so a production build that
@@ -230,7 +332,7 @@ lacks runtime values still compiles (failures surface at request time, not build
 
 ---
 
-## 7. Security Checklist
+## 8. Security Checklist
 
 - ✅ `getUser()` everywhere — no `getSession()` for authorization.
 - ✅ RLS on all tables; explicit, least-privilege policies.
@@ -246,8 +348,12 @@ lacks runtime values still compiles (failures surface at request time, not build
 - ✅ Public pages never fetch or render monitor URLs, check locations, or raw error messages.
 - ✅ Unpublished and unknown slugs are indistinguishable (both 404); public pages are `noindex`.
 - ✅ A user can only upsert their **own** status page; duplicate slugs are refused (`23505`).
+- ✅ Telegram bot token is server-only; webhook requests require the separate secret header (constant-time compare).
+- ✅ Telegram link codes are random, hashed at rest, single-use, and expire after 10 minutes.
+- ✅ `alert_channels` chat ids can only be written by the webhook (service role); users cannot repoint a channel through PostgREST.
+- ✅ Alert delivery is fail-open for monitoring: Telegram errors are caught and never fail a check.
 
-## 8. Known Limitations & Assumptions
+## 9. Known Limitations & Assumptions
 
 - **First-check timing:** a newly created monitor's first check runs one full
   `check_interval` after creation (driven by `updated_at`). Pausing/resuming a
@@ -260,7 +366,7 @@ lacks runtime values still compiles (failures surface at request time, not build
   and an `APP_URL` repository variable. Until then the statistics stay sparse and
   are driven only by manual "Check now". (`vercel.json` is intentionally absent —
   see the plan-limit note in section 4.)
-- **Public status pages:** implemented — see section 5. A live page discloses
+- **Public status pages:** implemented — see section 6. A live page discloses
   **all** of the owner's monitors (the schema has no per-monitor publish flag)
   and slugs are guessable, so publishing is a public disclosure. The page renders
   no URLs or raw errors, but the anonymous RLS policies still grant `SELECT` on
@@ -277,6 +383,18 @@ lacks runtime values still compiles (failures surface at request time, not build
   `proxy.ts`, and the data-access layer (`lib/auth.ts`) plus per-action
   `getUser()` calls are the authoritative authorization boundary. The dashboard
   lives at `/` and is server-rendered per request.
+- **Telegram delivery is best-effort:** a send that fails (bot blocked, Telegram
+  outage, revoked token) is logged but not retried, because a retry could
+  duplicate messages. The console is the only record of a failed send. The
+  webhook must be registered against a public HTTPS URL; localhost needs a
+  tunnel (e.g. `ngrok`) and `setWebhook` pointed at it.
+- **One Telegram chat per account:** all monitor alerts go to the same chat.
+  There is no per-monitor chat routing. Linking the same chat from another
+  account moves it (last link wins).
+- **Cooldowns are per monitor and alert type:** a flapping monitor can still
+  send a recovery after a suppressed down alert; the 10-minute window applies
+  to down/degraded messages, not recoveries. The degraded threshold is the
+  existing 1000ms rule in `lib/monitoring.ts`.
 - **Aggregation granularity:** uptime/latency metrics are computed from the
   last 30 logs per monitor (capped), so they reflect a recent window, not full
   history. Persisting an aggregate/rollup is a later enhancement.

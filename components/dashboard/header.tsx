@@ -191,6 +191,7 @@ export function Header({
           type="button"
           onClick={onRefresh}
           disabled={isRefreshing}
+          suppressHydrationWarning
           className="flex items-center gap-1.5 rounded-md border border-border bg-card/80 px-1.5 py-1.5 text-[11px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 sm:px-2"
           title="Refresh dashboard data"
           aria-label={`Refresh dashboard. Updated ${updatedLabel}.`}

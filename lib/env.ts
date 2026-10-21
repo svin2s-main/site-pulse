@@ -30,4 +30,21 @@ export const env = {
   get serviceRoleKey(): string {
     return read("SUPABASE_SERVICE_ROLE_KEY");
   },
+
+  /**
+   * Telegram alerting is optional: the app runs (and builds) without it, and
+   * the dashboard simply reports that alerts are not configured.
+   */
+  get telegramBotToken(): string | null {
+    const value = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    return value ? value : null;
+  },
+  get telegramBotUsername(): string | null {
+    const value = process.env.TELEGRAM_BOT_USERNAME?.trim().replace(/^@/, "");
+    return value ? value : null;
+  },
+  get telegramWebhookSecret(): string | null {
+    const value = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+    return value ? value : null;
+  },
 } as const;

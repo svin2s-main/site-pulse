@@ -12,6 +12,8 @@ import {
 } from "@/lib/monitoring";
 import type { CheckInterval, MonitorStatus } from "@/lib/database.types";
 import type { StatusPageSummary } from "@/types/status-page";
+import type { TelegramSettings } from "@/types/alerts";
+import { loadTelegramSettings } from "@/lib/alerts";
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -32,6 +34,8 @@ const createMonitorSchema = z.object({
   interval: z.enum(["30s", "1m", "5m", "15m", "1h"], {
     error: "Invalid check interval",
   }),
+  /** Per-monitor Telegram alerts; enabled by default. */
+  alertsEnabled: z.boolean().default(true),
 });
 
 const monitorIdSchema = z
@@ -60,6 +64,7 @@ export type MonitorSummary = {
   status: MonitorStatus;
   last_latency_ms: number | null;
   is_paused: boolean;
+  alerts_enabled: boolean;
   ssl_expires_at: string | null;
   created_at: string;
   updated_at: string;
@@ -94,6 +99,8 @@ export type DashboardData = {
   summary: DashboardSummary;
   /** The user's public status page settings, or null when never configured. */
   statusPage: StatusPageSummary | null;
+  /** Telegram alert channel state and deployment configuration. */
+  telegram: TelegramSettings;
 };
 
 // ---------------------------------------------------------------------------
@@ -127,9 +134,10 @@ export async function createMonitorAction(
       name: parsed.data.name,
       url: parsed.data.url,
       interval: parsed.data.interval,
+      alerts_enabled: parsed.data.alertsEnabled,
     })
     .select(
-      "id,name,url,interval,status,last_latency_ms,is_paused,ssl_expires_at,created_at,updated_at",
+      "id,name,url,interval,status,last_latency_ms,is_paused,alerts_enabled,ssl_expires_at,created_at,updated_at",
     )
     .single();
 
@@ -174,11 +182,12 @@ export async function updateMonitorAction(
       name: parsed.data.name,
       url: parsed.data.url,
       interval: parsed.data.interval,
+      alerts_enabled: parsed.data.alertsEnabled,
     })
     .eq("id", parsed.data.id)
     .eq("user_id", user.id)
     .select(
-      "id,name,url,interval,status,last_latency_ms,is_paused,ssl_expires_at,created_at,updated_at",
+      "id,name,url,interval,status,last_latency_ms,is_paused,alerts_enabled,ssl_expires_at,created_at,updated_at",
     )
     .single();
 
@@ -313,7 +322,7 @@ export async function getDashboardDataAction(): Promise<
   const { data: monitors, error: monitorsError } = await supabase
     .from("monitors")
     .select(
-      "id,name,url,interval,status,last_latency_ms,is_paused,ssl_expires_at,created_at,updated_at",
+      "id,name,url,interval,status,last_latency_ms,is_paused,alerts_enabled,ssl_expires_at,created_at,updated_at",
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: true });
@@ -379,7 +388,11 @@ export async function getDashboardDataAction(): Promise<
       }
     : null;
 
-  return ok({ monitors: monitorsWithLogs, summary, statusPage });
+  // Same idea for the Telegram card: it is small and always rendered, so it
+  // rides along with the dashboard payload instead of issuing a second request.
+  const telegram = await loadTelegramSettings(supabase, user.id);
+
+  return ok({ monitors: monitorsWithLogs, summary, statusPage, telegram });
 }
 
 // ---------------------------------------------------------------------------
