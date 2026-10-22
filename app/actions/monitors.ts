@@ -13,7 +13,10 @@ import {
 import type { CheckInterval, MonitorStatus } from "@/lib/database.types";
 import type { StatusPageSummary } from "@/types/status-page";
 import type { TelegramSettings } from "@/types/alerts";
-import { loadTelegramSettings } from "@/lib/alerts";
+import {
+  fallbackTelegramSettings,
+  loadTelegramSettings,
+} from "@/lib/alerts";
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -104,6 +107,86 @@ export type DashboardData = {
 };
 
 // ---------------------------------------------------------------------------
+// Resilience helpers
+//
+// `alerts_enabled` was added by migration 0002. A deployment can briefly run
+// against a database where that migration has not been applied yet; in that
+// case the dashboard must still load monitors instead of returning a generic
+// failure. These helpers detect that exact error, retry without the new column,
+// and print the actionable cause in the server console.
+// ---------------------------------------------------------------------------
+
+const MONITOR_SELECT =
+  "id,name,url,interval,status,last_latency_ms,is_paused,alerts_enabled,ssl_expires_at,created_at,updated_at" as const;
+
+const MONITOR_SELECT_WITHOUT_ALERTS =
+  "id,name,url,interval,status,last_latency_ms,is_paused,ssl_expires_at,created_at,updated_at" as const;
+
+type SupabaseErrorLike = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
+/** True only for the specific "monitors.alerts_enabled is missing" error. */
+function isMissingAlertsColumn(
+  error: SupabaseErrorLike | null | undefined,
+): boolean {
+  if (!error) return false;
+
+  const message = (error.message ?? "").toLowerCase();
+  if (!message.includes("alerts_enabled")) return false;
+
+  return (
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    message.includes("does not exist") ||
+    message.includes("could not find") ||
+    message.includes("schema cache")
+  );
+}
+
+/** Logs both a readable summary and the raw Supabase error (with stack). */
+function logSupabaseError(context: string, error: unknown): void {
+  if (!error) {
+    console.error(`${context}: no error object was returned`);
+    return;
+  }
+
+  if (typeof error === "object") {
+    const detail = error as SupabaseErrorLike;
+    const parts = [
+      detail.message ?? "unknown error",
+      detail.code ? `code=${detail.code}` : null,
+      detail.details ? `details=${detail.details}` : null,
+      detail.hint ? `hint=${detail.hint}` : null,
+    ].filter(Boolean);
+
+    console.error(`${context}: ${parts.join(" | ")}`);
+    // Raw object preserves the full stack/fields for deeper debugging.
+    console.error(error);
+    return;
+  }
+
+  console.error(`${context}:`, error);
+}
+
+/** Warn once per server process; the dashboard refreshes every 30 seconds. */
+let hasWarnedMissingAlertsMigration = false;
+
+function warnMissingAlertsMigration(context: string): void {
+  if (hasWarnedMissingAlertsMigration) return;
+  hasWarnedMissingAlertsMigration = true;
+
+  console.warn(
+    `${context}: monitors.alerts_enabled is missing. ` +
+      "Apply supabase/migrations/0002_alerts.sql to enable per-monitor alert " +
+      "settings. Continuing with alerts_enabled = true for this request.",
+  );
+}
+
+// ---------------------------------------------------------------------------
 // createMonitorAction
 // ---------------------------------------------------------------------------
 
@@ -127,27 +210,52 @@ export async function createMonitorAction(
     return fail("Unauthorized");
   }
 
-  const { data, error } = await supabase
+  const monitorInput = {
+    user_id: user.id,
+    name: parsed.data.name,
+    url: parsed.data.url,
+    interval: parsed.data.interval,
+    alerts_enabled: parsed.data.alertsEnabled,
+  };
+
+  const created = await supabase
     .from("monitors")
-    .insert({
-      user_id: user.id,
-      name: parsed.data.name,
-      url: parsed.data.url,
-      interval: parsed.data.interval,
-      alerts_enabled: parsed.data.alertsEnabled,
-    })
-    .select(
-      "id,name,url,interval,status,last_latency_ms,is_paused,alerts_enabled,ssl_expires_at,created_at,updated_at",
-    )
+    .insert(monitorInput)
+    .select(MONITOR_SELECT)
     .single();
 
-  if (error || !data) {
+  if (!created.error && created.data) {
+    revalidatePath("/");
+    return ok(created.data);
+  }
+
+  if (isMissingAlertsColumn(created.error)) {
+    warnMissingAlertsMigration("createMonitorAction");
+
+    // Retry without the column so core monitor management keeps working until
+    // the migration is applied. Alert targeting defaults to enabled.
+    const fallback = await supabase
+      .from("monitors")
+      .insert({
+        user_id: monitorInput.user_id,
+        name: monitorInput.name,
+        url: monitorInput.url,
+        interval: monitorInput.interval,
+      })
+      .select(MONITOR_SELECT_WITHOUT_ALERTS)
+      .single();
+
+    if (!fallback.error && fallback.data) {
+      revalidatePath("/");
+      return ok({ ...fallback.data, alerts_enabled: true });
+    }
+
+    logSupabaseError("createMonitorAction: fallback insert", fallback.error);
     return fail("Failed to create monitor");
   }
 
-  revalidatePath("/");
-
-  return ok(data);
+  logSupabaseError("createMonitorAction: insert", created.error);
+  return fail("Failed to create monitor");
 }
 
 // ---------------------------------------------------------------------------
@@ -176,28 +284,52 @@ export async function updateMonitorAction(
 
   // Ownership is enforced both by the RLS update policy and the explicit
   // user_id filter (defense in depth), so a user can only edit their own row.
-  const { data, error } = await supabase
+  const monitorUpdate = {
+    name: parsed.data.name,
+    url: parsed.data.url,
+    interval: parsed.data.interval,
+    alerts_enabled: parsed.data.alertsEnabled,
+  };
+
+  const updated = await supabase
     .from("monitors")
-    .update({
-      name: parsed.data.name,
-      url: parsed.data.url,
-      interval: parsed.data.interval,
-      alerts_enabled: parsed.data.alertsEnabled,
-    })
+    .update(monitorUpdate)
     .eq("id", parsed.data.id)
     .eq("user_id", user.id)
-    .select(
-      "id,name,url,interval,status,last_latency_ms,is_paused,alerts_enabled,ssl_expires_at,created_at,updated_at",
-    )
+    .select(MONITOR_SELECT)
     .single();
 
-  if (error || !data) {
+  if (!updated.error && updated.data) {
+    revalidatePath("/");
+    return ok(updated.data);
+  }
+
+  if (isMissingAlertsColumn(updated.error)) {
+    warnMissingAlertsMigration("updateMonitorAction");
+
+    const fallback = await supabase
+      .from("monitors")
+      .update({
+        name: monitorUpdate.name,
+        url: monitorUpdate.url,
+        interval: monitorUpdate.interval,
+      })
+      .eq("id", parsed.data.id)
+      .eq("user_id", user.id)
+      .select(MONITOR_SELECT_WITHOUT_ALERTS)
+      .single();
+
+    if (!fallback.error && fallback.data) {
+      revalidatePath("/");
+      return ok({ ...fallback.data, alerts_enabled: true });
+    }
+
+    logSupabaseError("updateMonitorAction: fallback update", fallback.error);
     return fail("Failed to update monitor");
   }
 
-  revalidatePath("/");
-
-  return ok(data);
+  logSupabaseError("updateMonitorAction: update", updated.error);
+  return fail("Failed to update monitor");
 }
 
 // ---------------------------------------------------------------------------
@@ -319,15 +451,41 @@ export async function getDashboardDataAction(): Promise<
     return fail("Unauthorized");
   }
 
-  const { data: monitors, error: monitorsError } = await supabase
+  const monitorResult = await supabase
     .from("monitors")
-    .select(
-      "id,name,url,interval,status,last_latency_ms,is_paused,alerts_enabled,ssl_expires_at,created_at,updated_at",
-    )
+    .select(MONITOR_SELECT)
     .eq("user_id", user.id)
     .order("created_at", { ascending: true });
 
-  if (monitorsError) {
+  let monitors = monitorResult.data;
+  let monitorsError = monitorResult.error;
+
+  // Fallback for a database where migration 0002 has not been applied yet:
+  // load the legacy column set and assume alerts are enabled. This keeps the
+  // dashboard usable while showing a precise warning in the server console.
+  if (isMissingAlertsColumn(monitorsError)) {
+    warnMissingAlertsMigration("getDashboardDataAction");
+
+    const fallback = await supabase
+      .from("monitors")
+      .select(MONITOR_SELECT_WITHOUT_ALERTS)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+
+    monitors = fallback.data
+      ? fallback.data.map((monitor) => ({
+          ...monitor,
+          alerts_enabled: true,
+        }))
+      : null;
+    monitorsError = fallback.error;
+  }
+
+  if (monitorsError || !monitors) {
+    logSupabaseError(
+      "getDashboardDataAction: failed to load monitors",
+      monitorsError,
+    );
     return fail("Failed to load monitors");
   }
 
@@ -347,6 +505,10 @@ export async function getDashboardDataAction(): Promise<
       .limit(1000);
 
     if (logsError) {
+      logSupabaseError(
+        "getDashboardDataAction: failed to load check logs",
+        logsError,
+      );
       return fail("Failed to load check logs");
     }
 
@@ -374,11 +536,19 @@ export async function getDashboardDataAction(): Promise<
 
   // The owner-facing status page settings ride along with the dashboard payload
   // so the publishing card renders without a second round trip.
-  const { data: statusPageRow } = await supabase
+  const { data: statusPageRow, error: statusPageError } = await supabase
     .from("public_status_pages")
     .select("slug,title,is_live")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  if (statusPageError) {
+    // Non-fatal: the dashboard still works without status-page settings.
+    logSupabaseError(
+      "getDashboardDataAction: failed to load status page settings",
+      statusPageError,
+    );
+  }
 
   const statusPage: StatusPageSummary | null = statusPageRow
     ? {
@@ -388,9 +558,19 @@ export async function getDashboardDataAction(): Promise<
       }
     : null;
 
-  // Same idea for the Telegram card: it is small and always rendered, so it
-  // rides along with the dashboard payload instead of issuing a second request.
-  const telegram = await loadTelegramSettings(supabase, user.id);
+  // Telegram is optional. Any failure here (missing env, missing alert tables,
+  // Telegram outage) must degrade to the "not configured" card, never break
+  // the monitor payload above.
+  let telegram: TelegramSettings;
+  try {
+    telegram = await loadTelegramSettings(supabase, user.id);
+  } catch (error) {
+    logSupabaseError(
+      "getDashboardDataAction: failed to load Telegram settings",
+      error,
+    );
+    telegram = fallbackTelegramSettings();
+  }
 
   return ok({ monitors: monitorsWithLogs, summary, statusPage, telegram });
 }

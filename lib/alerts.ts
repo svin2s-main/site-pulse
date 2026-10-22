@@ -23,39 +23,75 @@ export const ALERT_COOLDOWN_MS = 10 * 60 * 1000;
 /** Dashboard-generated Telegram link codes are valid for this long. */
 export const TELEGRAM_LINK_TTL_MS = 10 * 60 * 1000;
 
+/** Avoid repeating the same missing-table warning on every dashboard refresh. */
+let hasLoggedTelegramSettingsError = false;
+
 /** SHA-256 of the raw deep-link code; only the hash is persisted. */
 export function hashTelegramLinkToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
 /**
- * Reads the caller's channel for the dashboard card. Missing configuration or
- * a missing table (migration not applied yet) reads as "not connected" rather
- * than breaking the dashboard.
+ * Safe defaults for every failure mode: missing env vars, a missing
+ * `alert_channels` table, or an unexpected Telegram/Supabase error. The rest of
+ * the dashboard must keep loading even when alerting is misconfigured.
+ */
+export function fallbackTelegramSettings(): TelegramSettings {
+  let botUsername: string | null = null;
+
+  try {
+    botUsername = env.telegramBotUsername;
+  } catch (error) {
+    console.error("Failed to read TELEGRAM_BOT_USERNAME:", error);
+  }
+
+  return {
+    isConnected: false,
+    isActive: false,
+    username: null,
+    notifyDegraded: false,
+    botUsername,
+  };
+}
+
+/**
+ * Reads the caller's channel for the dashboard card. This function is
+ * deliberately fail-safe: it never throws, so a Telegram problem can never take
+ * down monitor loading.
  */
 export async function loadTelegramSettings(
   client: SupabaseClient<Database>,
   userId: string,
 ): Promise<TelegramSettings> {
-  const { data, error } = await client
-    .from("alert_channels")
-    .select("telegram_username,is_active,notify_degraded")
-    .eq("user_id", userId)
-    .eq("type", "telegram")
-    .maybeSingle();
+  try {
+    const { data, error } = await client
+      .from("alert_channels")
+      .select("telegram_username,is_active,notify_degraded")
+      .eq("user_id", userId)
+      .eq("type", "telegram")
+      .maybeSingle();
 
-  if (error) {
-    // The dashboard remains usable if the alerts migration has not been run.
-    console.error("Failed to load Telegram settings:", error.message);
+    if (error && !hasLoggedTelegramSettingsError) {
+      hasLoggedTelegramSettingsError = true;
+      // Usually means migration 0002 has not been applied. Log the full error
+      // (code/details/hint) so the cause is visible in the server console.
+      console.error(
+        "Failed to load Telegram settings — if this mentions alert_channels, apply supabase/migrations/0002_alerts.sql:",
+        error,
+      );
+    }
+
+    return {
+      isConnected: Boolean(data),
+      isActive: data?.is_active ?? false,
+      username: data?.telegram_username ?? null,
+      notifyDegraded: data?.notify_degraded ?? false,
+      botUsername: env.telegramBotUsername,
+    };
+  } catch (error) {
+    console.error("Unexpected error while loading Telegram settings:", error);
+    return fallbackTelegramSettings();
   }
-
-  return {
-    isConnected: Boolean(data),
-    isActive: data?.is_active ?? false,
-    username: data?.telegram_username ?? null,
-    notifyDegraded: data?.notify_degraded ?? false,
-    botUsername: env.telegramBotUsername,
-  };
 }
 
 type AlertMonitor = {

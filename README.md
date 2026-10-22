@@ -29,10 +29,16 @@ supabase db push          # from the project root
 If you don't already have a Supabase project linked, first run `supabase init`
 and `supabase link --project-ref <ref>`.
 
-> Apply `0002_alerts.sql` **before** deploying the Telegram build: the dashboard
-> selects `monitors.alerts_enabled`, so an unmigrated database makes monitor
-> loading fail. The Telegram *environment variables* are optional, but the
-> migration itself is not.
+> Apply `0002_alerts.sql` to enable Telegram alerts. The dashboard now has a
+> fallback for an unmigrated database: it loads monitors and logs a precise
+> warning instead of failing. The Telegram card and the per-monitor alert
+> toggle still require the migration, and the Telegram *environment variables*
+> are optional.
+
+If monitor loading fails for another reason, the server console now prints the
+exact Supabase error (`message`, `code`, `details`, `hint`) from
+`getDashboardDataAction`. If the error names `alerts_enabled` or
+`alert_channels`, the migration has not been applied to that database yet.
 
 ### Enums
 - `monitor_status` — `operational`, `degraded`, `down`, `paused`

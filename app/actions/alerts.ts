@@ -27,6 +27,33 @@ const preferencesSchema = z.object({
   notifyDegraded: z.boolean(),
 });
 
+type SupabaseErrorLike = {
+  code?: string | null;
+  message?: string | null;
+};
+
+/** Detects the "Telegram tables/columns are missing" migration error. */
+function isMissingTelegramSchema(
+  error: SupabaseErrorLike | null | undefined,
+): boolean {
+  if (!error) return false;
+
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    message.includes("telegram_link_tokens") ||
+    message.includes("alert_channels")
+  );
+}
+
+function logActionError(context: string, error: unknown): void {
+  console.error(`${context}:`, error);
+}
+
+const MISSING_MIGRATION_MESSAGE =
+  "Telegram alerts are not set up yet. Apply supabase/migrations/0002_alerts.sql on the database.";
+
 export async function createTelegramLinkAction(): Promise<
   ActionResponse<TelegramLink>
 > {
@@ -56,7 +83,15 @@ export async function createTelegramLinkAction(): Promise<
     .is("used_at", null);
 
   if (cleanupError) {
-    return fail("Could not prepare a Telegram link");
+    logActionError(
+      "createTelegramLinkAction: failed to clear old link tokens",
+      cleanupError,
+    );
+    return fail(
+      isMissingTelegramSchema(cleanupError)
+        ? MISSING_MIGRATION_MESSAGE
+        : "Could not prepare a Telegram link",
+    );
   }
 
   // 32 random bytes → 43 base64url chars, which fits Telegram's 64-char limit
@@ -75,7 +110,15 @@ export async function createTelegramLinkAction(): Promise<
     });
 
   if (insertError) {
-    return fail("Could not create a Telegram link");
+    logActionError(
+      "createTelegramLinkAction: failed to insert link token",
+      insertError,
+    );
+    return fail(
+      isMissingTelegramSchema(insertError)
+        ? MISSING_MIGRATION_MESSAGE
+        : "Could not create a Telegram link",
+    );
   }
 
   return ok({
@@ -125,17 +168,35 @@ export async function updateTelegramPreferencesAction(
   // alert_channels has no authenticated UPDATE policy: chat ids may only be
   // written by the webhook. Preference changes therefore go through the
   // server with an explicit user_id filter, never a client-supplied id.
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("alert_channels")
-    .update({ notify_degraded: parsed.data.notifyDegraded })
-    .eq("user_id", user.id)
-    .eq("type", "telegram")
-    .select("id")
-    .maybeSingle();
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("alert_channels")
+      .update({ notify_degraded: parsed.data.notifyDegraded })
+      .eq("user_id", user.id)
+      .eq("type", "telegram")
+      .select("id")
+      .maybeSingle();
 
-  if (error || !data) {
-    return fail("Telegram is not connected");
+    if (error || !data) {
+      if (error) {
+        logActionError(
+          "updateTelegramPreferencesAction: failed to update channel",
+          error,
+        );
+      }
+      return fail(
+        isMissingTelegramSchema(error)
+          ? MISSING_MIGRATION_MESSAGE
+          : "Telegram is not connected",
+      );
+    }
+  } catch (error) {
+    logActionError(
+      "updateTelegramPreferencesAction: unexpected error",
+      error,
+    );
+    return fail("Could not update Telegram preferences");
   }
 
   revalidatePath("/");
@@ -165,7 +226,17 @@ export async function sendTelegramTestAction(): Promise<
     .maybeSingle();
 
   if (error || !channel) {
-    return fail("Telegram is not connected");
+    if (error) {
+      logActionError(
+        "sendTelegramTestAction: failed to load channel",
+        error,
+      );
+    }
+    return fail(
+      isMissingTelegramSchema(error)
+        ? MISSING_MIGRATION_MESSAGE
+        : "Telegram is not connected",
+    );
   }
 
   if (!channel.is_active) {
@@ -212,7 +283,15 @@ export async function disconnectTelegramAction(): Promise<
     .eq("type", "telegram");
 
   if (error) {
-    return fail("Could not disconnect Telegram");
+    logActionError(
+      "disconnectTelegramAction: failed to delete channel",
+      error,
+    );
+    return fail(
+      isMissingTelegramSchema(error)
+        ? MISSING_MIGRATION_MESSAGE
+        : "Could not disconnect Telegram",
+    );
   }
 
   revalidatePath("/");

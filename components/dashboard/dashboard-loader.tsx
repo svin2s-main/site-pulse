@@ -3,6 +3,7 @@ import { getDashboardDataAction } from "@/app/actions/monitors";
 import { Dashboard } from "@/components/dashboard/dashboard";
 import { toDashboardMonitor } from "@/lib/mappers";
 import { getCurrentUser } from "@/lib/auth";
+import { fallbackTelegramSettings } from "@/lib/alerts";
 import type { TelegramSettings } from "@/types/alerts";
 
 /**
@@ -38,13 +39,7 @@ export async function DashboardLoader() {
   const telegram: TelegramSettings =
     result.success === true
       ? result.data.telegram
-      : {
-          isConnected: false,
-          isActive: false,
-          username: null,
-          notifyDegraded: false,
-          botUsername: null,
-        };
+      : fallbackTelegramSettings();
 
   return (
     <Dashboard

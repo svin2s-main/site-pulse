@@ -13,7 +13,7 @@
 -- 1. Per-monitor opt-in
 -- ---------------------------------------------------------------------------
 alter table public.monitors
-  add column alerts_enabled boolean not null default true;
+  add column if not exists alerts_enabled boolean not null default true;
 
 comment on column public.monitors.alerts_enabled is
   'When false, status transitions for this monitor never send alerts.';
@@ -30,7 +30,7 @@ comment on column public.monitors.alerts_enabled is
 -- have no INSERT/UPDATE policy: this prevents a user from repointing
 -- telegram_chat_id at another chat through PostgREST.
 -- ---------------------------------------------------------------------------
-create table public.alert_channels (
+create table if not exists public.alert_channels (
   id                uuid primary key default gen_random_uuid(),
   user_id           uuid not null references auth.users (id) on delete cascade,
   type              text not null default 'telegram'
@@ -43,7 +43,7 @@ create table public.alert_channels (
   constraint alert_channels_user_type_key unique (user_id, type)
 );
 
-create index alert_channels_user_id_idx
+create index if not exists alert_channels_user_id_idx
   on public.alert_channels (user_id);
 
 -- ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ create index alert_channels_user_id_idx
 -- solely in the link the user opens; it expires after 10 minutes and is
 -- consumed with a single conditional UPDATE so it cannot be replayed.
 -- ---------------------------------------------------------------------------
-create table public.telegram_link_tokens (
+create table if not exists public.telegram_link_tokens (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references auth.users (id) on delete cascade,
   token_hash text not null unique,
@@ -62,10 +62,10 @@ create table public.telegram_link_tokens (
   created_at timestamptz not null default now()
 );
 
-create index telegram_link_tokens_user_id_idx
+create index if not exists telegram_link_tokens_user_id_idx
   on public.telegram_link_tokens (user_id, created_at desc);
 
-create index telegram_link_tokens_expires_at_idx
+create index if not exists telegram_link_tokens_expires_at_idx
   on public.telegram_link_tokens (expires_at);
 
 -- ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ create index telegram_link_tokens_expires_at_idx
 -- cooldown window. Rows are inserted by the server only (no authenticated
 -- INSERT policy), so clients cannot forge history.
 -- ---------------------------------------------------------------------------
-create table public.alert_events (
+create table if not exists public.alert_events (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references auth.users (id) on delete cascade,
   monitor_id    uuid not null references public.monitors (id) on delete cascade,
@@ -88,10 +88,10 @@ create table public.alert_events (
   created_at    timestamptz not null default now()
 );
 
-create index alert_events_monitor_type_created_idx
+create index if not exists alert_events_monitor_type_created_idx
   on public.alert_events (monitor_id, type, created_at desc);
 
-create index alert_events_user_created_idx
+create index if not exists alert_events_user_created_idx
   on public.alert_events (user_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
@@ -102,33 +102,45 @@ alter table public.telegram_link_tokens enable row level security;
 alter table public.alert_events         enable row level security;
 
 -- alert_channels ------------------------------------------------------------
+drop policy if exists "Users can read their own alert channel"
+  on public.alert_channels;
 create policy "Users can read their own alert channel"
   on public.alert_channels for select
   to authenticated
   using ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can delete their own alert channel"
+  on public.alert_channels;
 create policy "Users can delete their own alert channel"
   on public.alert_channels for delete
   to authenticated
   using ((select auth.uid()) = user_id);
 
 -- telegram_link_tokens ------------------------------------------------------
+drop policy if exists "Users can read their own link tokens"
+  on public.telegram_link_tokens;
 create policy "Users can read their own link tokens"
   on public.telegram_link_tokens for select
   to authenticated
   using ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can create their own link tokens"
+  on public.telegram_link_tokens;
 create policy "Users can create their own link tokens"
   on public.telegram_link_tokens for insert
   to authenticated
   with check ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can delete their own link tokens"
+  on public.telegram_link_tokens;
 create policy "Users can delete their own link tokens"
   on public.telegram_link_tokens for delete
   to authenticated
   using ((select auth.uid()) = user_id);
 
 -- alert_events --------------------------------------------------------------
+drop policy if exists "Users can read their own alert events"
+  on public.alert_events;
 create policy "Users can read their own alert events"
   on public.alert_events for select
   to authenticated
